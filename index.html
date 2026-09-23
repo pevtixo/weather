@@ -510,96 +510,66 @@
             generateAIBriefing(); // FIXED: Added parentheses here!
         }
 
-        async function getWeather() {
-            const cityInput = document.getElementById('cityInput').value.trim();
-            if (!cityInput) return;
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('weatherInfo').classList.remove('active');
+      // 🧠 MOAT 2: Local AI Twin Engine (Zero-Dependency)
+function generateAIBriefing() {
+    const profileStr = localStorage.getItem('userProfile');
+    if (!profileStr) return; 
+    const profile = JSON.parse(profileStr);
 
-            try {
-                const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityInput)}&count=1&language=en&format=json`);
-                const geoData = await geoRes.json();
-                if (!geoData.results || geoData.results.length === 0) {
-                    alert("City not found!"); document.getElementById('loading').style.display = 'none'; return;
-                }
-                const { latitude, longitude, name, country } = geoData.results[0];
+    if (!globalCity || !globalWeatherData || !globalAqiData) return;
 
-                const [weatherRes, aqRes] = await Promise.all([
-                    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,cloud_cover&minutely_15=precipitation&daily=sunrise,sunset&timezone=auto`),
-                    fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${latitude}&longitude=${longitude}&current=us_aqi,pm2_5`)
-                ]);
+    const aiTextDiv = document.getElementById('aiText');
+    
+    // Extract the data
+    const temp = Math.round(globalWeatherData.current.temperature_2m);
+    const weatherCode = globalWeatherData.current.weather_code;
+    const aqi = globalAqiData.current.us_aqi;
+    const rainStatus = document.getElementById('rainAlert').innerText;
+    
+    // Start building the advice
+    let advice = [];
 
-                const weatherData = await weatherRes.json();
-                const aqData = await aqRes.json();
+    // 1. Health-Based Advice
+    if (profile.health === 'Asthma') {
+        if (aqi > 100) advice.push(`AQI is ${aqi} (unhealthy). Keep your inhaler handy and avoid heavy outdoor exercise.`);
+        else advice.push(`Air quality is decent today (AQI ${aqi}), so breathing should be easier.`);
+    } else if (profile.health === 'Allergies') {
+        if (weatherCode === 0 || weatherCode === 1) advice.push(`It's sunny, which means pollen might be high. Take your antihistamine before heading out.`);
+        else advice.push(`Cloudy skies might keep pollen down today. You should be fine.`);
+    } else if (profile.health === 'Heat Sensitive') {
+        if (temp > 32) advice.push(`It's ${temp}°C. It's going to be brutal. Stay hydrated and stick to the shade.`);
+        else advice.push(`Temperatures are manageable at ${temp}°C.`);
+    } else if (profile.health === 'Cold Sensitive') {
+        if (temp < 15) advice.push(`It's chilly at ${temp}°C. Wear layers, or you'll be shivering all day.`);
+        else advice.push(`It's not too cold today (${temp}°C), so you're safe.`);
+    }
 
-                renderWeather(weatherData, aqData, name, country, latitude, longitude);
-                localStorage.setItem('lastCity', cityInput);
-                localStorage.setItem('lastWeather', JSON.stringify({ name, country, data: weatherData, aq: aqData, lat: latitude, lon: longitude }));
-            } catch (error) {
-                alert("Network error."); document.getElementById('loading').style.display = 'none';
-            }
-        }
+    // 2. Commute-Based Advice
+    if (profile.commute === 'Walk') {
+        if (rainStatus.includes('Rain starts')) advice.push(`You walk to work, but ${rainStatus.toLowerCase()} Take an umbrella or leave early.`);
+        else advice.push(`You're walking today. No rain is expected, so enjoy the fresh air.`);
+    } else if (profile.commute === 'Bike') {
+        if (rainStatus.includes('Rain starts')) advice.push(`Riding a bike in the rain is a bad idea. ${rainStatus} Take the car or bus today.`);
+        else if (temp > 35) advice.push(`It's too hot to bike (${temp}°C). You'll arrive sweaty and miserable.`);
+        else advice.push(`Perfect weather for a bike ride today.`);
+    } else if (profile.commute === 'Car') {
+        if (rainStatus.includes('Rain starts')) advice.push(`Rain is coming, so expect slower traffic. Leave 10 minutes earlier.`);
+        else advice.push(`Clear roads ahead for your drive.`);
+    } else if (profile.commute === 'Public Transport') {
+        advice.push(`Public transport is running. Just make sure you have your umbrella if rain is coming.`);
+    } else {
+        if (rainStatus.includes('Rain starts')) advice.push(`Rain is expected later, so plan your indoor activities accordingly.`);
+    }
 
-        function getLocation() {
-            if (navigator.geolocation) {
-                document.getElementById('loading').style.display = 'block';
-                document.getElementById('weatherInfo').classList.remove('active');
-                navigator.geolocation.getCurrentPosition(async (position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    try {
-                        const [weatherRes, aqRes] = await Promise.all([
-                            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,cloud_cover&minutely_15=precipitation&daily=sunrise,sunset&timezone=auto`),
-                            fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5`)
-                        ]);
+    // 3. Final Vibe
+    if (advice.length === 0) {
+        advice.push(`The weather is calm. It's a good day to be alive!`);
+    }
 
-                        const weatherData = await weatherRes.json();
-                        const aqData = await aqRes.json();
-                        const geoRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
-                        const geoData = await geoRes.json();
-
-                        const cityName = geoData.city || geoData.locality || "Your Location";
-                        const countryName = geoData.countryName || "";
-
-                        renderWeather(weatherData, aqData, cityName, countryName, lat, lon);
-                        localStorage.setItem('lastCity', cityName);
-                        localStorage.setItem('lastWeather', JSON.stringify({ name: cityName, country: countryName, data: weatherData, aq: aqData, lat: lat, lon: lon }));
-                    } catch (error) {
-                        alert("Could not get weather."); document.getElementById('loading').style.display = 'none';
-                    }
-                }, () => { alert("Location access denied."); document.getElementById('loading').style.display = 'none'; });
-            } else { alert("Geolocation not supported."); }
-        }
-
-        window.addEventListener('load', () => {
-            const cached = localStorage.getItem('lastWeather');
-            if (cached) {
-                const { name, country, data, aq, lat, lon } = JSON.parse(cached);
-                renderWeather(data, aq, name, country, lat, lon);
-                document.getElementById('cityInput').value = localStorage.getItem('lastCity') || '';
-            }
-        });
-
-        document.getElementById('cityInput').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') getWeather();
-        });
-
-        // ==========================================
-        // 🧠 MOAT 2: Profile Logic & AI Twin Engine
-        // ==========================================
-
-        function saveProfile() {
-            const profile = {
-                health: document.getElementById('healthProfile').value,
-                commute: document.getElementById('commuteProfile').value
-            };
-            localStorage.setItem('userProfile', JSON.stringify(profile));
-            document.getElementById('profileStatus').innerText = "✅ Profile saved! AI advice coming soon.";
-            setTimeout(() => { document.getElementById('profileStatus').innerText = ""; }, 3000);
-
-            // Trigger the AI Briefing immediately after saving
-            generateAIBriefing();
-        }
+    // Combine it into a nice 2-sentence briefing
+    const finalText = advice.join(" ");
+    aiTextDiv.innerText = finalText;
+}
 
         // Load profile on startup
         window.addEventListener('load', () => {
